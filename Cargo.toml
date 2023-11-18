@@ -1,0 +1,12 @@
+[package]
+name = "nnli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+candle-onnx = "0.3.1"
+clap = { version = "4.4.8", features = ["derive"] }
+crossterm = "0.27.0"
+ratatui = { version = "0.24.0", features = ["crossterm"] }
