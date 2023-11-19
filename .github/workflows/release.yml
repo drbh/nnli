@@ -1,0 +1,56 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        target: ${{ matrix.target }}
+
+    - name: Build
+      run: cargo build --release --target ${{ matrix.target }}
+
+    - name: Rename and move artifacts
+      run: |
+        mkdir -p ${{ runner.os }}-${{ matrix.target }}/release
+        cp target/${{ matrix.target }}/release/nnli ${{ runner.os }}-${{ matrix.target }}/release/
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./${{ runner.os }}-${{ matrix.target }}/release/nnli
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Release Asset
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./${{ runner.os }}-${{ matrix.target }}/release/nnli
+        asset_name: nnli-${{ runner.os }}-${{ matrix.target }}
+        asset_content_type: application/octet-stream
