@@ -1,11 +1,14 @@
 use std::{
+    collections::HashMap,
     error::Error,
     io,
     time::{Duration, Instant},
 };
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -127,21 +130,6 @@ impl<'a> App<'a> {
         self.graph_data = StatefulList::with_items(data);
     }
 }
-
-use std::collections::HashMap;
-
-// pub fn find_input_nodes(graph: &GraphProto) {
-
-//     // Now, for each node, find its input nodes using the HashMap
-//     for node in &graph.node {
-//         println!("Node: {}", node.name);
-//         for input in &node.input {
-//             if let Some(input_nodes) = output_to_input_nodes.get(input) {
-//                 println!("Input for {}: {:?}", input, input_nodes);
-//             }
-//         }
-//     }
-// }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
@@ -268,6 +256,9 @@ fn run_app<B: Backend>(
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            return Ok(())
+                        }
                         KeyCode::Left => app.graph_data.unselect(),
                         KeyCode::Down => app.graph_data.next(),
                         KeyCode::Up => app.graph_data.previous(),
@@ -309,7 +300,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let items = List::new(items)
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(
-                format!(" Nodes "),
+                " Nodes ".to_string(),
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Red)
@@ -460,8 +451,8 @@ fn ui(f: &mut Frame, app: &mut App) {
                     .chain(attributes_title)
                     .chain(attributes)
                     .map(|(k, v)| {
-                        let line = Line::from(vec![k, v]);
-                        line
+                        
+                        Line::from(vec![k, v])
                     })
                     .collect::<Vec<_>>();
 
@@ -476,7 +467,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .block(
             Block::default().borders(Borders::ALL).title(
                 Span::styled(
-                    format!(" Details "),
+                    " Details ".to_string(),
                     Style::default().fg(Color::Black).bg(Color::LightCyan),
                 )
                 .add_modifier(Modifier::BOLD),
