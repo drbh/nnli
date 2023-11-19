@@ -2,7 +2,7 @@
 
 Interactively explore `onnx` networks in your CLI.
 
-<img width="1140" alt="nnlipoc" src="https://github.com/drbh/nnli/assets/9896130/4bf1d860-bb0b-4622-bb98-d716f11f5d0e">
+![nnlirestyle](https://github.com/drbh/nnli/assets/9896130/876b476d-349a-450c-afce-52a145e4c04f)
 
 ```
 cargo run --release -- print --file <PATH TO ONNX MODEL>
