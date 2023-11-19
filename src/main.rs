@@ -84,6 +84,9 @@ struct GraphNode {
     output: Vec<String>,
     op_type: String,
     attribute: Vec<GraphAttribute>,
+    // input_pointers are pointers to the index of the input nodes
+    // in the graph_data.items vector
+    // input_pointers: Vec<usize>,
 }
 
 // A struct to hold the graph node attribute data
@@ -99,14 +102,14 @@ struct GraphAttribute {
 /// Check the event handling at the bottom to see how to change the state on incoming events.
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 struct App<'a> {
-    events: Vec<(&'a str, String)>,
+    events: Vec<(&'a str, Option<GraphNode>)>,
     graph_data: StatefulList<(String, GraphNode)>,
 }
 
 impl<'a> App<'a> {
     fn new() -> App<'a> {
         App {
-            events: vec![("Event2", "ERROR".to_string())],
+            events: vec![("Event2", None)],
             graph_data: StatefulList::with_items(vec![]), // Initialize with empty or default data
         }
     }
@@ -124,6 +127,21 @@ impl<'a> App<'a> {
         self.graph_data = StatefulList::with_items(data);
     }
 }
+
+use std::collections::HashMap;
+
+// pub fn find_input_nodes(graph: &GraphProto) {
+
+//     // Now, for each node, find its input nodes using the HashMap
+//     for node in &graph.node {
+//         println!("Node: {}", node.name);
+//         for input in &node.input {
+//             if let Some(input_nodes) = output_to_input_nodes.get(input) {
+//                 println!("Input for {}: {:?}", input, input_nodes);
+//             }
+//         }
+//     }
+// }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
@@ -145,15 +163,29 @@ fn main() -> Result<(), Box<dyn Error>> {
             // println!("{model:?}");
             let graph = model.graph.unwrap();
 
+            // HashMap to store output-to-input node relationships
+            let mut output_to_input_nodes: HashMap<String, usize> = HashMap::new();
+
+            // Iterate through nodes to get the index of the input nodes
+            for (i, node) in graph.node.iter().enumerate() {
+                for input in &node.input {
+                    output_to_input_nodes.insert(input.clone(), i);
+                }
+            }
+
+            // Iterate through nodes to fill the
             // add graph nodes to app
             let mut graph_data = vec![];
             for node in graph.node {
+                // let input_index_pointers = vec![];
+
                 graph_data.push((
                     node.name.clone(),
                     GraphNode {
                         name: node.name.clone(),
                         input: node.input.clone(),
                         output: node.output.clone(),
+                        // input_pointers: input_index_pointers.clone(),
                         op_type: node.op_type.clone(),
                         attribute: node
                             .attribute
@@ -193,30 +225,30 @@ fn process_and_update_events(app: &mut App) {
     if let Some(selected_index) = app.graph_data.state.selected() {
         let gnode = app.graph_data.items[selected_index].1.clone();
 
-        let info = vec![
-            ("Name", gnode.name),
-            ("Input", gnode.input.join("\n")),
-            ("Output", gnode.output.join("\n")),
-            ("OpType", gnode.op_type),
-            (
-                "Attribute",
-                gnode
-                    .attribute
-                    .iter()
-                    .map(|attr| attr.name.clone())
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-            ),
-        ];
+        // let info = vec![
+        //     ("Name", gnode.name),
+        //     ("Input", gnode.input.join("\n")),
+        //     ("Output", gnode.output.join("\n")),
+        //     ("OpType", gnode.op_type),
+        //     (
+        //         "Attribute",
+        //         gnode
+        //             .attribute
+        //             .iter()
+        //             .map(|attr| attr.name.clone())
+        //             .collect::<Vec<String>>()
+        //             .join("\n"),
+        //     ),
+        // ];
 
-        let info_str = info
-            .iter()
-            .map(|(k, v)| format!("{}\n{}", k, v))
-            .collect::<Vec<String>>()
-            .join("\n");
+        // let info_str = info
+        //     .iter()
+        //     .map(|(k, v)| format!("{}\n{}", k, v))
+        //     .collect::<Vec<String>>()
+        //     .join("\n");
 
         app.events.remove(0);
-        app.events.insert(0, ("Event1", info_str));
+        app.events.insert(0, ("Event1", Some(gnode)));
     }
 }
 
@@ -242,6 +274,7 @@ fn run_app<B: Backend>(
                         KeyCode::Enter => {} // Additional logic if required
                         _ => {}
                     }
+
                     process_and_update_events(&mut app); // Call the helper function
                 }
             }
@@ -274,10 +307,19 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Create a List from all list items and highlight the currently selected one
     let items = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Nodes"))
+        .block(
+            Block::default().borders(Borders::ALL).title(Span::styled(
+                format!(" Nodes "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Red)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        )
         .highlight_style(
             Style::default()
-                .bg(Color::LightGreen)
+                .fg(Color::Black)
+                .bg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
@@ -292,51 +334,154 @@ fn ui(f: &mut Frame, app: &mut App) {
         .iter()
         // .rev()
         .map(|(_event, level)| {
-            // Colorcode the level depending on its type
-            let s = match level.as_str() {
-                "CRITICAL" => Style::default().fg(Color::Red),
-                "ERROR" => Style::default().fg(Color::Magenta),
-                "WARNING" => Style::default().fg(Color::Yellow),
-                "INFO" => Style::default().fg(Color::Blue),
-                _ => Style::default(),
+            let line = match level {
+                Some(gnode) => {
+                    let info = vec![
+                        (
+                            Span::styled(
+                                "Name: ",
+                                Style::default()
+                                    .fg(Color::Magenta)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(gnode.name.clone(), Style::default().fg(Color::Yellow)),
+                        ),
+                        (
+                            Span::styled(
+                                "OpType: ",
+                                Style::default()
+                                    .fg(Color::Magenta)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(gnode.op_type.clone(), Style::default().fg(Color::Yellow)),
+                        ),
+                    ];
+
+                    let input_title = vec![(
+                        Span::styled("", Style::default().fg(Color::White).bg(Color::Magenta)),
+                        Span::styled(
+                            format!("Input ({})", gnode.input.len()),
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    )];
+                    let inputs = gnode
+                        .input
+                        .iter()
+                        .enumerate()
+                        .map(|(index, i)| {
+                            if index == gnode.input.len() - 1 {
+                                (
+                                    Span::styled("  ╰── ", Style::default().fg(Color::White)),
+                                    Span::styled(i.clone(), Style::default().fg(Color::Yellow)),
+                                )
+                            } else {
+                                (
+                                    Span::styled("  ├── ", Style::default().fg(Color::White)),
+                                    Span::styled(i.clone(), Style::default().fg(Color::Yellow)),
+                                )
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let output_title = vec![(
+                        Span::styled("", Style::default().fg(Color::White).bg(Color::Magenta)),
+                        Span::styled(
+                            format!("Output ({})", gnode.output.len()),
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    )];
+                    let outputs = gnode
+                        .output
+                        .iter()
+                        .enumerate()
+                        .map(|(index, o)| {
+                            if index == gnode.output.len() - 1 {
+                                (
+                                    Span::styled("  ╰── ", Style::default().fg(Color::White)),
+                                    Span::styled(o.clone(), Style::default().fg(Color::Yellow)),
+                                )
+                            } else {
+                                (
+                                    Span::styled("  ├── ", Style::default().fg(Color::White)),
+                                    Span::styled(o.clone(), Style::default().fg(Color::Yellow)),
+                                )
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let attributes_title = vec![(
+                        Span::styled("", Style::default().fg(Color::White).bg(Color::Magenta)),
+                        Span::styled(
+                            format!("Attributes ({})", gnode.output.len()),
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    )];
+                    let attributes = gnode
+                        .attribute
+                        .iter()
+                        .enumerate()
+                        .map(|(index, a)| {
+                            if index == gnode.attribute.len() - 1 {
+                                (
+                                    Span::styled("  ╰── ", Style::default().fg(Color::White)),
+                                    Span::styled(
+                                        a.name.clone(),
+                                        Style::default().fg(Color::Yellow),
+                                    ),
+                                )
+                            } else {
+                                (
+                                    Span::styled("  ├── ", Style::default().fg(Color::White)),
+                                    Span::styled(
+                                        a.name.clone(),
+                                        Style::default().fg(Color::Yellow),
+                                    ),
+                                )
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let info_lines = vec![(
+                        Span::styled("", Style::default().fg(Color::White).bg(Color::Magenta)),
+                        Span::styled("".to_string(), Style::default().fg(Color::Yellow)),
+                    )]
+                    .into_iter()
+                    .chain(info)
+                    .chain(input_title)
+                    .chain(inputs)
+                    .chain(output_title)
+                    .chain(outputs)
+                    .chain(attributes_title)
+                    .chain(attributes)
+                    .map(|(k, v)| {
+                        let line = Line::from(vec![k, v]);
+                        line
+                    })
+                    .collect::<Vec<_>>();
+
+                    ListItem::new(info_lines)
+                }
+                None => ListItem::new(vec![Line::from("None")]),
             };
-            // Add a example datetime and apply proper spacing between them
-            let header = Line::from(vec![
-                Span::styled(format!("{level:<9}"), s),
-                " ".into(),
-                "2020-01-01 10:00:00".italic(),
-            ]);
-            // The event gets its own line
-            // let log = Line::from(vec![event.into()]);
-
-            let log = level
-                .split('\n')
-                .map(Line::from)
-                .collect::<Vec<_>>();
-
-            // Here several things happen:
-            // 1. Add a `---` spacing line above the final list entry
-            // 2. Add the Level + datetime
-            // 3. Add a spacer line
-            // 4. Add the actual event
-
-            let mut will_render = vec![
-                Line::from("-".repeat(chunks[1].width as usize)),
-                header,
-                Line::from(""),
-            ];
-
-            // join the log lines
-            will_render.extend(log);
-
-            ListItem::new(will_render)
+            line
         })
         .collect();
     let events_list = List::new(events)
-        .block(Block::default().borders(Borders::ALL).title(
-            Span::styled(format!("Details"), Style::default().fg(Color::Magenta)),
-            // "Details"
-        ))
-        .start_corner(Corner::BottomLeft);
+        .block(
+            Block::default().borders(Borders::ALL).title(
+                Span::styled(
+                    format!(" Details "),
+                    Style::default().fg(Color::Black).bg(Color::LightCyan),
+                )
+                .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .start_corner(Corner::TopLeft);
     f.render_widget(events_list, chunks[1]);
 }
