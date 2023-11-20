@@ -4,8 +4,18 @@ Interactively explore `onnx` networks in your CLI.
 
 ![nnlirestyle](https://github.com/drbh/nnli/assets/9896130/876b476d-349a-450c-afce-52a145e4c04f)
 
+Get `nnli`!
+
+```bash
+git clone https://github.com/drbh/nnli.git
+cd nnli
+cargo install --path .
 ```
-cargo run --release -- print --file <PATH TO ONNX MODEL>
+
+Print a local model
+
+```bash
+nnli print --file <PATH TO ONNX MODEL>
 ```
 
 This app is a work in progress, and there is a lot of room for improvement on both the code and user experience (UX) fronts. 
