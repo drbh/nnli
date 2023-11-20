@@ -23,6 +23,9 @@ jobs:
           profile: minimal
           override: true
 
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Publish to Crates.io
         uses: actions-rs/cargo@v1
         with:
