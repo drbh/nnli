@@ -1,5 +1,7 @@
 ## nnli
 
+[![Latest version](https://img.shields.io/crates/v/nnli.svg)](https://crates.io/crates/nnli)
+
 Interactively explore `onnx` networks in your CLI.
 
 ![nnlirestyle](https://github.com/drbh/nnli/assets/9896130/876b476d-349a-450c-afce-52a145e4c04f)
