@@ -10,18 +10,9 @@ on:
 
 jobs:
   publish:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.env.VERSION_UPDATED == 'true'
     runs-on: ubuntu-latest
     steps:
-      # first check ig VERSION_UPDATED in $GITHUB_ENV is true
-      - name: Check if version updated
-        run: |
-          if [ "$VERSION_UPDATED" = "true" ]; then
-            echo "Version updated"
-          else
-            echo "Version not updated"
-            exit 1
-          fi
 
       - name: Checkout code
         uses: actions/checkout@v3
