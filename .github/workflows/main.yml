@@ -120,10 +120,3 @@ jobs:
           files: ./artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish release on GitHub
-        uses: ncipollo/release-action@v1
-        with:
-          tag: "v${{ needs.create-version-branch.outputs.VERSION }}"
-          artifacts: ./artifacts/*
-          token: ${{ secrets.GITHUB_TOKEN }}
