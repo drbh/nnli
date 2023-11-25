@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       VERSION_UPDATED: ${{ steps.check-version.outputs.VERSION_UPDATED }}
-      VERSION: ${{ steps.check-version.outputs.VERSION_CURRENT }}
+      VERSION: ${{ steps.check-version.outputs.VERSION }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -124,5 +124,6 @@ jobs:
       - name: Publish release on GitHub
         uses: ncipollo/release-action@v1
         with:
+          tag: "v${{ needs.create-version-branch.outputs.VERSION }}"
           artifacts: ./artifacts/*
           token: ${{ secrets.GITHUB_TOKEN }}
