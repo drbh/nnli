@@ -13,9 +13,17 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Download VERSION_UPDATED artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: version-status
+
+      - name: Read VERSION_UPDATED from the file
+        id: read-version
+        run: echo "version_updated=$(cat version_status.txt)" >> $GITHUB_ENV
+
       - name: Test ENV
-        run: echo "VERSION_UPDATED = ${{ github.event.workflow_run.outputs.VERSION_UPDATED }}"
+        run: echo "VERSION_UPDATED = ${{ steps.read-version.outputs.version_updated }}"
