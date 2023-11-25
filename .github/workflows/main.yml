@@ -8,7 +8,9 @@ on:
 jobs:
   create-version-branch:
     runs-on: ubuntu-latest
-
+    outputs:
+      VERSION_UPDATED: ${{ steps.check-version.outputs.VERSION_UPDATED }}
+      VERSION: ${{ steps.check-version.outputs.VERSION_CURRENT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
