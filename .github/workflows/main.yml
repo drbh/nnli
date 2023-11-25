@@ -131,9 +131,6 @@ jobs:
           override: true
           target: x86_64-apple-darwin
 
-      - name: Install protobuf compiler
-        run: sudo apt-get install -y protobuf-compiler
-
       - name: Build for MacOS x86_64
         run: cargo build --release --target x86_64-apple-darwin
 
