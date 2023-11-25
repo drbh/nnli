@@ -156,6 +156,7 @@ jobs:
 
   create-release:
     needs: 
+      - create-version-branch
       - build
       - build-osx
     if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
