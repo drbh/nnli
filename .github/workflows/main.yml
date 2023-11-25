@@ -14,8 +14,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch all history for all branches and tags
-          token: ${{ secrets.GITHUB_TOKEN }}  # Use GITHUB_TOKEN for authentication
+          fetch-depth: 0 # Fetch all history for all branches and tags
+          token: ${{ secrets.GITHUB_TOKEN }} # Use GITHUB_TOKEN for authentication
 
       - name: Check if Cargo.toml version has been updated
         id: check-version
@@ -41,9 +41,9 @@ jobs:
           echo "Creating new branch with version $VERSION"
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          git checkout -b v$VERSION
+          git checkout -b release
           git tag v$VERSION
-          git push --set-upstream origin v$VERSION
+          git push --set-upstream origin release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,7 +52,6 @@ jobs:
     if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -80,39 +79,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        target: x86_64-unknown-linux-gnu
+      - uses: actions/checkout@v3
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: x86_64-unknown-linux-gnu
 
-    - name: Install Cross-Compilation Tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-        sudo apt-get install -y gcc-multilib g++-multilib
-        sudo apt-get install -y mingw-w64
+      - name: Install Cross-Compilation Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y gcc-multilib g++-multilib
+          sudo apt-get install -y mingw-w64
 
-    - name: Build for x86_64 Linux
-      run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Build for x86_64 Linux
+        run: cargo build --release --target x86_64-unknown-linux-gnu
 
-    - name: Rename and move artifacts
-      run: |
-        mkdir -p artifacts
-        cp target/x86_64-unknown-linux-gnu/release/nnli artifacts/nnli-linux-x86_64
+      - name: Rename and move artifacts
+        run: |
+          mkdir -p artifacts
+          cp target/x86_64-unknown-linux-gnu/release/nnli artifacts/nnli-linux-x86_64
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: ./artifacts/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Publish release on GitHub
-      uses: ncipollo/release-action@v1
-      with:
-        artifacts: ./artifacts/*
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish release on GitHub
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ./artifacts/*
+          token: ${{ secrets.GITHUB_TOKEN }}
