@@ -35,15 +35,23 @@ jobs:
             echo "Version has not been updated"
             echo "VERSION_UPDATED=false" >> $GITHUB_OUTPUT
           fi
-      - name: Create new branch with version
+      - name: Update release branch with new version tag
         if: steps.check-version.outputs.VERSION_UPDATED == 'true'
         run: |
           echo "Creating new branch with version $VERSION"
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          git checkout -b release
+          if git rev-parse --verify --quiet release; then
+            echo "Release branch exists. Checking it out."
+            git checkout release
+            git merge main --no-edit
+          else
+            echo "Creating new release branch."
+            git checkout -b release
+          fi
           git tag v$VERSION
-          git push --set-upstream origin release
+          git push origin release
+          git push origin v$VERSION
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
