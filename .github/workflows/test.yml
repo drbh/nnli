@@ -18,5 +18,5 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Test ENV
-        run: echo $GITHUB_ENV
+        run: echo "VERSION_UPDATED = ${{ steps.check-version.outputs.VERSION_UPDATED }}"
 
