@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Create new branch with version
-        if: env.VERSION_UPDATED == 'true'
+        if: steps.check-version.outputs.VERSION_UPDATED == 'true'
         run: |
           echo "Creating new branch with version $VERSION"
           git config --global user.name 'GitHub Action'
@@ -48,7 +48,7 @@ jobs:
 
   publish:
     needs: create-version-branch
-    if: github.env.VERSION_UPDATED == 'true'
+    if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
     runs-on: ubuntu-latest
     steps:
 
@@ -75,7 +75,7 @@ jobs:
 
   build:
     needs: create-version-branch
-    if: github.env.VERSION_UPDATED == 'true'
+    if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
     runs-on: ubuntu-latest
 
     steps:
