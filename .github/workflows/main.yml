@@ -112,22 +112,43 @@ jobs:
       - name: Build for x86_64 Linux
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
-      - name: Build for MacOS aarch64
-        run: |
-          rustup target add aarch64-apple-darwin  
-          cargo build --release --target aarch64-apple-darwin
-
-      - name: Build for MacOS x86_64
-        run: |
-          rustup target add x86_64-apple-darwin  
-          cargo build --release --target x86_64-apple-darwin
-
       - name: Rename and move artifacts
         run: |
           mkdir -p artifacts
           cp target/x86_64-unknown-linux-gnu/release/nnli artifacts/nnli-linux-x86_64
-          cp target/aarch64-apple-darwin/release/nnli artifacts/nnli-macos-aarch64
+
+  build-osx:
+    needs: create-version-branch
+    if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: x86_64-apple-darwin
+
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Build for MacOS x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Rename and move artifacts
+        run: |
+          mkdir -p artifacts
           cp target/x86_64-apple-darwin/release/nnli artifacts/nnli-macos-x86_64
+
+  create-release:
+    needs: 
+      - build
+      - build-osx
+    if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
+    runs-on: ubuntu-latest
+    steps:
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
