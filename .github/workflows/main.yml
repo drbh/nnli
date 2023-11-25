@@ -1,0 +1,125 @@
+name: Complete workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-version-branch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history for all branches and tags
+          token: ${{ secrets.GITHUB_TOKEN }}  # Use GITHUB_TOKEN for authentication
+
+      - name: Check if Cargo.toml version has been updated
+        id: check-version
+        run: |
+          # Fetch the Cargo.toml from the main branch
+          git fetch origin main:Cargo.toml-main
+
+          # Extract version from both Cargo.toml files
+          VERSION_MAIN=$(grep "^version" Cargo.toml | cut -d '"' -f 2)
+          VERSION_CURRENT=$(grep "^version" Cargo.toml | cut -d '"' -f 2)
+
+          if [ "$VERSION_CURRENT" != "$VERSION_MAIN" ]; then
+            echo "Version has been updated to $VERSION_CURRENT"
+            echo "VERSION=$VERSION_CURRENT" >> $GITHUB_ENV
+            echo "VERSION_UPDATED=true" >> $GITHUB_ENV
+          else
+            echo "Version has not been updated"
+            echo "VERSION_UPDATED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create new branch with version
+        if: env.VERSION_UPDATED == 'true'
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git checkout -b v$VERSION
+          git push --set-upstream origin v$VERSION
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write VERSION_UPDATED to a file
+        run: echo $VERSION_UPDATED > version_status.txt
+
+      - name: Upload VERSION_UPDATED as an artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: version-status
+          path: version_status.txt
+
+  publish:
+    needs: create-version-branch
+    if: github.env.VERSION_UPDATED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Publish to Crates.io
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --token ${{ secrets.CRATES_API_KEY }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_API_KEY }}
+
+  build:
+    needs: create-version-branch
+    if: github.env.VERSION_UPDATED == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        target: x86_64-unknown-linux-gnu
+
+    - name: Install Cross-Compilation Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        sudo apt-get install -y gcc-multilib g++-multilib
+        sudo apt-get install -y mingw-w64
+
+    - name: Build for x86_64 Linux
+      run: cargo build --release --target x86_64-unknown-linux-gnu
+
+    - name: Rename and move artifacts
+      run: |
+        mkdir -p artifacts
+        cp target/x86_64-unknown-linux-gnu/release/nnli artifacts/nnli-linux-x86_64
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./artifacts/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Publish release on GitHub
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: ./artifacts/*
+        token: ${{ secrets.GITHUB_TOKEN }}
