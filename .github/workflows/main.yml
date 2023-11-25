@@ -38,21 +38,13 @@ jobs:
       - name: Create new branch with version
         if: env.VERSION_UPDATED == 'true'
         run: |
+          echo "Creating new branch with version $VERSION"
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           git checkout -b v$VERSION
           git push --set-upstream origin v$VERSION
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Write VERSION_UPDATED to a file
-        run: echo $VERSION_UPDATED > version_status.txt
-
-      - name: Upload VERSION_UPDATED as an artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: version-status
-          path: version_status.txt
 
   publish:
     needs: create-version-branch
