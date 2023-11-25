@@ -22,7 +22,10 @@ jobs:
         id: check-version
         run: |
           # Fetch the Cargo.toml from the main branch
-          git fetch origin main:Cargo.toml-main
+          git fetch origin main
+          git checkout FETCH_HEAD -- Cargo.toml
+          mv Cargo.toml Cargo.toml-main
+          git checkout HEAD -- Cargo.toml
 
           # Extract version from both Cargo.toml files
           VERSION_MAIN=$(grep "^version" Cargo.toml-main | cut -d '"' -f 2)
