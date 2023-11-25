@@ -25,7 +25,7 @@ jobs:
           git fetch origin main:Cargo.toml-main
 
           # Extract version from both Cargo.toml files
-          VERSION_MAIN=$(grep "^version" Cargo.toml | cut -d '"' -f 2)
+          VERSION_MAIN=$(grep "^version" Cargo.toml-main | cut -d '"' -f 2)
           VERSION_CURRENT=$(grep "^version" Cargo.toml | cut -d '"' -f 2)
 
           if [ "$VERSION_CURRENT" != "$VERSION_MAIN" ]; then
