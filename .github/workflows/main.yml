@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       VERSION_UPDATED: ${{ steps.check-version.outputs.VERSION_UPDATED }}
+      VERSION: ${{ steps.check-version.outputs.VERSION_CURRENT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -30,6 +31,7 @@ jobs:
           if [ "$VERSION_CURRENT" != "$VERSION_MAIN" ]; then
             echo "Version has been updated to $VERSION_CURRENT"
             echo "VERSION=$VERSION_CURRENT" >> $GITHUB_ENV
+            echo "VERSION=$VERSION_CURRENT" >> $GITHUB_OUTPUT
             echo "VERSION_UPDATED=true" >> $GITHUB_OUTPUT
           else
             echo "Version has not been updated"
@@ -114,6 +116,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.create-version-branch.outputs.VERSION }}
           files: ./artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
