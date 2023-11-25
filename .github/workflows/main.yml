@@ -117,6 +117,12 @@ jobs:
           mkdir -p artifacts
           cp target/x86_64-unknown-linux-gnu/release/nnli artifacts/nnli-linux-x86_64
 
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux-artifacts
+          path: artifacts/*
+
   build-osx:
     needs: create-version-branch
     if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
@@ -142,6 +148,12 @@ jobs:
           mkdir -p artifacts
           cp target/x86_64-apple-darwin/release/nnli artifacts/nnli-macos-x86_64
 
+      - name: Upload MacOS Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos-artifacts
+          path: artifacts/*
+
   create-release:
     needs: 
       - build
@@ -149,6 +161,17 @@ jobs:
     if: needs.create-version-branch.outputs.VERSION_UPDATED == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: linux-artifacts
+          path: artifacts/
+
+      - name: Download MacOS Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: macos-artifacts
+          path: artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
