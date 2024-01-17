@@ -297,8 +297,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else if file_ending == "bin" {
                 // read the file
             } else if file_ending == "safetensors" {
-                // load all of the files
-                let values = files
+                // sort and load all of the files
+                let mut sorted_files = files.clone();
+                sorted_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+                
+                let values = sorted_files
                     .iter()
                     .map(|file| read_safetensors_file(file.to_str().unwrap()))
                     .collect::<Result<Vec<_>, _>>()?;
