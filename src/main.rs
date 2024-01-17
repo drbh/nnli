@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use clap::{Parser, Subcommand};
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
@@ -12,15 +13,35 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
+use serde_derive::{Deserialize, Serialize};
 
-use clap::{Parser, Subcommand};
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SafetensorFile {
+    #[serde(rename = "__metadata__")]
+    pub metadata: Metadata,
+    #[serde(flatten)]
+    pub layers: IndexMap<String, LayerData>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Metadata {
+    pub format: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayerData {
+    pub data_offsets: Vec<i64>,
+    pub dtype: String,
+    pub shape: Vec<i64>,
+}
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
     Print {
         #[arg(long)]
-        file: String,
+        path: String,
     },
 }
 
@@ -131,6 +152,77 @@ impl<'a> App<'a> {
     }
 }
 
+use std::fs;
+use std::path::PathBuf;
+
+fn infer_file_types(file: &str) -> io::Result<Vec<PathBuf>> {
+    // Determine if path is a file or a directory
+    let metadata = fs::metadata(file)?;
+    let files = if metadata.is_dir() {
+        // Collect all file paths in the directory
+        fs::read_dir(file)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<PathBuf>>()
+    } else {
+        vec![PathBuf::from(file)]
+    };
+
+    // Define allowed extensions
+    let allowed_extensions = ["safetensors", "onnx"];
+
+    // Define allowed specific filenames
+    let allowed_specific_filenames = ["pytorch_model.bin"];
+
+    // Filter files with allowed extensions or specific filenames
+    let allowed_files = files
+        .into_iter()
+        .filter(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| allowed_extensions.contains(&ext.to_lowercase().as_str()))
+                .unwrap_or(false)
+                || allowed_specific_filenames.contains(
+                    &path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                )
+        })
+        .collect::<Vec<PathBuf>>();
+
+    Ok(allowed_files)
+}
+
+fn read_safetensors_file(file: &str) -> Result<SafetensorFile, Box<dyn Error>> {
+    let file = std::fs::File::open(file)?;
+    let reader = std::io::BufReader::new(file);
+
+    use std::io::Read;
+
+    // Python f.read(8)
+    let mut reader = reader.take(8);
+    let mut buffer = [0; 8];
+    reader.read_exact(&mut buffer)?;
+
+    println!("{buffer:?}");
+
+    // convert into number Python struct.unpack('<Q', buffer)[0]
+    let length = u64::from_le_bytes(buffer);
+
+    println!("{length:?}");
+
+    // now read that many bytes of the file
+    let mut reader = reader.into_inner();
+    let mut buffer = vec![0; length as usize];
+    reader.read_exact(&mut buffer)?;
+
+    // the buff is a json string WE NEED TO PERSERVE THE ORDER OF THE LAYERS
+    let value: SafetensorFile = serde_json::from_slice(&buffer)?;
+    Ok(value)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
@@ -145,50 +237,153 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tick_rate = Duration::from_millis(250);
     let mut app = App::new();
 
-    match args.command {
-        Command::Print { file } => {
-            let model = candle_onnx::read_file(file)?;
-            // println!("{model:?}");
-            let graph = model.graph.unwrap();
+    let loaded = match args.command {
+        Command::Print { path: file } => {
+            // path is either a file or a directory
 
-            // HashMap to store output-to-input node relationships
-            let mut output_to_input_nodes: HashMap<String, usize> = HashMap::new();
+            let files = infer_file_types(&file)?;
 
-            // Iterate through nodes to get the index of the input nodes
-            for (i, node) in graph.node.iter().enumerate() {
-                for input in &node.input {
-                    output_to_input_nodes.insert(input.clone(), i);
+            let file_ending = files
+                .first()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split('.')
+                .last()
+                .unwrap();
+
+            if file_ending == "onnx" {
+                let file = files.first().unwrap().to_str().unwrap();
+
+                let model = candle_onnx::read_file(file)?;
+                // println!("{model:?}");
+                let graph = model.graph.unwrap();
+
+                // HashMap to store output-to-input node relationships
+                let mut output_to_input_nodes: HashMap<String, usize> = HashMap::new();
+
+                // Iterate through nodes to get the index of the input nodes
+                for (i, node) in graph.node.iter().enumerate() {
+                    for input in &node.input {
+                        output_to_input_nodes.insert(input.clone(), i);
+                    }
                 }
+
+                // Iterate through nodes to fill the
+                // add graph nodes to app
+                let mut graph_data = vec![];
+                for node in graph.node {
+                    // let input_index_pointers = vec![];
+
+                    graph_data.push((
+                        node.name.clone(),
+                        GraphNode {
+                            name: node.name.clone(),
+                            input: node.input.clone(),
+                            output: node.output.clone(),
+                            op_type: node.op_type.clone(),
+                            attribute: node
+                                .attribute
+                                .iter()
+                                .map(|attr| GraphAttribute {
+                                    name: attr.name.clone(),
+                                })
+                                .collect(),
+                        },
+                    ));
+                }
+
+                app.load_graph_data(graph_data);
+            } else if file_ending == "bin" {
+                // read the file
+            } else if file_ending == "safetensors" {
+                // load all of the files
+                let values = files
+                    .iter()
+                    .map(|file| read_safetensors_file(file.to_str().unwrap()))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                // merge all of the layers into one
+                let mut value = SafetensorFile::default();
+                for v in values {
+                    value.layers.extend(v.layers);
+                }
+
+                // TODO: figure out how to sort the layers to best display the graph
+                // value.layers.sort_by(|_key_a, layer_a, _key_b, layer_b| {
+                //     layer_a
+                //         .data_offsets
+                //         .iter()
+                //         .sum::<i64>()
+                //         .cmp(&layer_b.data_offsets.iter().sum::<i64>())
+                // });
+
+                // now populate the graph data
+                let mut graph_data = vec![];
+
+                for (name, layer) in value.layers {
+                    let est_size = layer.shape.iter().product::<i64>()
+                        * match layer.dtype.as_str() {
+                            "F8" => 8,
+                            "F16" => 2,
+                            "F32" => 4,
+                            "F64" => 8,
+                            "I8" => 1,
+                            "I16" => 2,
+                            "I32" => 4,
+                            "I64" => 8,
+                            _ => 0,
+                        };
+
+                    let human_readable_size = if est_size <= 1024 {
+                        format!("{} B", est_size)
+                    } else if est_size <= 1024 * 1024 {
+                        format!("{} KB", est_size / 1024)
+                    } else if est_size <= 1024 * 1024 * 1024 {
+                        format!("{} MB", est_size / 1024 / 1024)
+                    } else {
+                        format!("{} GB", est_size / 1024 / 1024 / 1024)
+                    };
+
+                    graph_data.push((
+                        name.clone(),
+                        GraphNode {
+                            name: name.clone(),
+                            input: vec![],
+                            output: vec![],
+                            op_type: layer.dtype.clone(),
+                            attribute: vec![
+                                GraphAttribute {
+                                    name: format!("shape: {:?}", layer.shape),
+                                },
+                                GraphAttribute {
+                                    name: format!("data_offsets: {:?}", layer.data_offsets),
+                                },
+                                // estimate the size of the layer by multiplying the shape
+                                GraphAttribute {
+                                    name: format!("est_weight_size: {}", human_readable_size),
+                                },
+                            ],
+                        },
+                    ));
+                }
+
+                app.load_graph_data(graph_data);
+            } else {
+                println!("File ending not supported");
+
+                // restore terminal
+                disable_raw_mode()?;
+                execute!(
+                    terminal.backend_mut(),
+                    LeaveAlternateScreen,
+                    DisableMouseCapture
+                )?;
+                terminal.show_cursor()?;
+                return Ok(());
             }
-
-            // Iterate through nodes to fill the
-            // add graph nodes to app
-            let mut graph_data = vec![];
-            for node in graph.node {
-                // let input_index_pointers = vec![];
-
-                graph_data.push((
-                    node.name.clone(),
-                    GraphNode {
-                        name: node.name.clone(),
-                        input: node.input.clone(),
-                        output: node.output.clone(),
-                        // input_pointers: input_index_pointers.clone(),
-                        op_type: node.op_type.clone(),
-                        attribute: node
-                            .attribute
-                            .iter()
-                            .map(|attr| GraphAttribute {
-                                name: attr.name.clone(),
-                            })
-                            .collect(),
-                    },
-                ));
-            }
-
-            app.load_graph_data(graph_data);
         }
-    }
+    };
 
     let res = run_app(&mut terminal, app, tick_rate);
 
@@ -450,10 +645,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                     .chain(outputs)
                     .chain(attributes_title)
                     .chain(attributes)
-                    .map(|(k, v)| {
-                        
-                        Line::from(vec![k, v])
-                    })
+                    .map(|(k, v)| Line::from(vec![k, v]))
                     .collect::<Vec<_>>();
 
                     ListItem::new(info_lines)

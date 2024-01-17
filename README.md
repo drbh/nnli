@@ -31,7 +31,7 @@ nnli --version
 Print a local model
 
 ```bash
-nnli print --file <PATH TO ONNX MODEL>
+nnli print --path <PATH TO ONNX MODEL>
 ```
 
 This app is a work in progress, and there is a lot of room for improvement on both the code and user experience (UX) fronts. 
@@ -49,3 +49,5 @@ features
 - [ ] highligh I/O of node on left
 - [ ] add command to show only unique operations
 - [ ] add commands to see other useful stats
+- [X] support `safetensors` files
+- [X] support file or directory input as `--path`
