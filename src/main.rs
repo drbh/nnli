@@ -1,7 +1,9 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     error::Error,
-    io,
+    io, str,
+    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -14,6 +16,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use indexmap::IndexMap;
+use num_bigint::BigInt;
 use ratatui::{prelude::*, widgets::*};
 use serde_derive::{Deserialize, Serialize};
 
@@ -237,7 +240,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tick_rate = Duration::from_millis(250);
     let mut app = App::new();
 
-    let loaded = match args.command {
+    match args.command {
         Command::Print { path: file } => {
             // path is either a file or a directory
 
@@ -300,7 +303,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // sort and load all of the files
                 let mut sorted_files = files.clone();
                 sorted_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
-                
+
                 let values = sorted_files
                     .iter()
                     .map(|file| read_safetensors_file(file.to_str().unwrap()))
@@ -312,14 +315,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     value.layers.extend(v.layers);
                 }
 
-                // TODO: figure out how to sort the layers to best display the graph
-                // value.layers.sort_by(|_key_a, layer_a, _key_b, layer_b| {
-                //     layer_a
-                //         .data_offsets
-                //         .iter()
-                //         .sum::<i64>()
-                //         .cmp(&layer_b.data_offsets.iter().sum::<i64>())
-                // });
+                value
+                    .layers
+                    .sort_by(|k1, _v1, k2, _v2| cmp_numeric_lexicographic(k1, k2));
 
                 // now populate the graph data
                 let mut graph_data = vec![];
@@ -670,4 +668,85 @@ fn ui(f: &mut Frame, app: &mut App) {
         )
         .start_corner(Corner::TopLeft);
     f.render_widget(events_list, chunks[1]);
+}
+
+fn cmp_numeric_lexicographic(s1: &str, s2: &str) -> Ordering {
+    let mut b1 = s1.as_bytes();
+    let mut b2 = s2.as_bytes();
+
+    while !b1.is_empty() && !b2.is_empty() {
+        if b1[0].is_ascii_digit() && b2[0].is_ascii_digit() {
+            // Do a numerical compare if we encounter some digits.
+            let b1_digits = count_digit_bytes(b1);
+            let b2_digits = count_digit_bytes(b2);
+
+            // Unwraps are safe. A run of ASCII digits is always valid
+            // UTF-8 and always a valid number.
+            let num1 = BigInt::from_str(str::from_utf8(&b1[..b1_digits]).unwrap()).unwrap();
+            let num2 = BigInt::from_str(str::from_utf8(&b2[..b2_digits]).unwrap()).unwrap();
+
+            match num1.cmp(&num2) {
+                Ordering::Equal => {
+                    b1 = &b1[b1_digits..];
+                    b2 = &b2[b2_digits..];
+                }
+                ord => return ord,
+            }
+        } else {
+            // If the byte is not a digit, do a lexicographical compare.
+            match b1[0].cmp(&b2[0]) {
+                Ordering::Equal => {
+                    b1 = &b1[1..];
+                    b2 = &b2[1..];
+                }
+                ord => return ord,
+            }
+        }
+    }
+
+    b1.cmp(b2)
+}
+
+fn count_digit_bytes(b: &[u8]) -> usize {
+    b.iter().take_while(|b| b.is_ascii_digit()).count()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Ordering;
+
+    use crate::cmp_numeric_lexicographic;
+
+    #[test]
+    fn test_cmp_lexicographic_numeric() {
+        assert_eq!(cmp_numeric_lexicographic("aaa", "aaa"), Ordering::Equal);
+        assert_eq!(cmp_numeric_lexicographic("aaa", "aa"), Ordering::Greater);
+        assert_eq!(cmp_numeric_lexicographic("aa", "aaa"), Ordering::Less);
+        assert_eq!(cmp_numeric_lexicographic("aaa", "aab"), Ordering::Less);
+        assert_eq!(cmp_numeric_lexicographic("baa", "aaa"), Ordering::Greater);
+        assert_eq!(cmp_numeric_lexicographic("aaa1", "aaa2"), Ordering::Less);
+        assert_eq!(cmp_numeric_lexicographic("1aaa", "2aaa"), Ordering::Less);
+        assert_eq!(cmp_numeric_lexicographic("aaa1a", "aaa2a"), Ordering::Less);
+        assert_eq!(cmp_numeric_lexicographic("aaa1a", "aaa11a"), Ordering::Less);
+        assert_eq!(
+            cmp_numeric_lexicographic("aaa2a", "aaa1a"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            cmp_numeric_lexicographic("aaa11a", "aaa1a"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            cmp_numeric_lexicographic("aaa11a", "aaa011a"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cmp_numeric_lexicographic("aaa1abb1b", "aaa1abb1b"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cmp_numeric_lexicographic("aaa1abb1b", "aaa1abb12b"),
+            Ordering::Less
+        );
+    }
 }
