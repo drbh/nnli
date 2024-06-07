@@ -2,8 +2,8 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     error::Error,
-    io, str,
-    str::FromStr,
+    io,
+    str::{self, FromStr},
     time::{Duration, Instant},
 };
 
@@ -40,11 +40,52 @@ pub struct LayerData {
     pub shape: Vec<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelIdDetails {
+    org: String,
+    model_id: String,
+    revision: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+
+enum Identifier {
+    ModelId(ModelIdDetails),
+    Path(String),
+}
+
+impl FromStr for Identifier {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // This is a bit hacky but makes it easier to work with
+        // if contains more than one / then it is a path
+        if s.chars().filter(|c| *c == '/').count() > 1 {
+            Ok(Identifier::Path(s.to_string()))
+        } else {
+            let split = s.split('/').collect::<Vec<&str>>();
+            let org = split[0].to_string();
+            let model_id = split[1].to_string();
+
+            let split = model_id.split('@').collect::<Vec<&str>>();
+            let model_id = split[0].to_string();
+            let revision = split.get(1).unwrap_or(&"main").to_string();
+
+            Ok(Identifier::ModelId(ModelIdDetails {
+                org,
+                model_id,
+                revision,
+            }))
+        }
+    }
+}
+
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
     Print {
         #[arg(long)]
-        path: String,
+        path: Identifier,
     },
 }
 
@@ -209,12 +250,8 @@ fn read_safetensors_file(file: &str) -> Result<SafetensorFile, Box<dyn Error>> {
     let mut buffer = [0; 8];
     reader.read_exact(&mut buffer)?;
 
-    println!("{buffer:?}");
-
     // convert into number Python struct.unpack('<Q', buffer)[0]
     let length = u64::from_le_bytes(buffer);
-
-    println!("{length:?}");
 
     // now read that many bytes of the file
     let mut reader = reader.into_inner();
@@ -224,6 +261,20 @@ fn read_safetensors_file(file: &str) -> Result<SafetensorFile, Box<dyn Error>> {
     // the buff is a json string WE NEED TO PERSERVE THE ORDER OF THE LAYERS
     let value: SafetensorFile = serde_json::from_slice(&buffer)?;
     Ok(value)
+}
+
+use std::env;
+
+fn restore_terminal(term: &mut Terminal<CrosstermBackend<io::Stdout>>) {
+    // restore terminal
+    disable_raw_mode().unwrap();
+    execute!(
+        term.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )
+    .unwrap();
+    term.show_cursor().unwrap();
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -241,10 +292,76 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
 
     match args.command {
-        Command::Print { path: file } => {
+        Command::Print { path: identifier } => {
             // path is either a file or a directory
+            let path = match identifier {
+                Identifier::ModelId(model_details) => {
+                    let org = model_details.org;
+                    let model = model_details.model_id;
+                    let mut revision = model_details.revision;
 
-            let files = infer_file_types(&file)?;
+                    let home_path = env::var("HOME").unwrap();
+                    let path = PathBuf::from(format!(
+                        "{home_path}/.cache/huggingface/hub/models--{org}--{model}/snapshots/"
+                    ));
+
+                    // check the one that was last modified
+                    let paths = fs::read_dir(path)
+                        .map_err(|e| {
+                            restore_terminal(&mut terminal);
+                            e
+                        })?
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .collect::<Vec<PathBuf>>()
+                        .clone();
+
+                    if revision == "main" && paths.len() > 1 {
+                        restore_terminal(&mut terminal);
+                        println!("Select the revision");
+                        for path in paths.iter() {
+                            let split_on_forward_slash =
+                                path.to_str().unwrap().split('/').collect::<Vec<&str>>();
+                            let revision = split_on_forward_slash.last().unwrap();
+                            println!("add @{} to the model_id", revision);
+                        }
+
+                        return Ok(());
+                    } else if paths.len() == 1 {
+                        // default to the only path
+                        revision = paths
+                            .first()
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .split('/')
+                            .last()
+                            .unwrap()
+                            .to_string();
+                    }
+
+                    // filter the paths for the revision
+                    let found_path = paths
+                        .iter()
+                        .find(|path| {
+                            path.file_name()
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .contains(&revision)
+                        })
+                        .unwrap();
+
+                    let path = found_path.to_str().unwrap().to_string();
+                    path
+                }
+                Identifier::Path(path) => path,
+            };
+
+            let files = infer_file_types(&path).map_err(|e| {
+                restore_terminal(&mut terminal);
+                e
+            })?;
 
             let file_ending = files
                 .first()
@@ -371,32 +488,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 app.load_graph_data(graph_data);
             } else {
+                restore_terminal(&mut terminal);
                 println!("File ending not supported");
-
-                // restore terminal
-                disable_raw_mode()?;
-                execute!(
-                    terminal.backend_mut(),
-                    LeaveAlternateScreen,
-                    DisableMouseCapture
-                )?;
-                terminal.show_cursor()?;
                 return Ok(());
             }
         }
     };
 
     let res = run_app(&mut terminal, app, tick_rate);
-
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
+    restore_terminal(&mut terminal);
     if let Err(err) = res {
         println!("{err:?}");
     }
